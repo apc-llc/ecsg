@@ -249,3 +249,4 @@ void UpdateGhostVZ(Field *sim1, Field *sim2,
         }
     }
 }
+
