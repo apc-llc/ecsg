@@ -1,8 +1,7 @@
 #=====================================================
 #=====================================================
 #=====================================================
-#   non-energy conserving composite staggered grid scheme
-#   use intuitive interpolation
+#   Uniform composite staggered grid scheme
 
 from rsf.proj import*
 import math
@@ -10,18 +9,10 @@ import os
 import platform
 import sys
 
-if platform.system()=='Darwin':
-    #   main at local
-    main = os.path.abspath('/Users/muhongzhou/Documents/PhD/reports-doc/R20-ecsg-tacc/main')
-    sys.path.append('/Users/muhongzhou/Documents/PhD/reports-doc/R20-ecsg-tacc/tests/test1-cmp-eci-ii/')
-elif platform.system()=='Linux':
-    #   main at tacc
-    main = os.path.abspath('/work/02049/mz10/ecsg/main')
-    sys.path.append('/work/02049/mz10/ecsg/tests/test1-cmp-eci-ii/')
-else:
-    os._exit(1)
+main = os.path.abspath('../../main')
+sys.path.append('/work/02049/mz10/ecsg/tests/test1-cmp-eci-ii/')
 
-from parii import * #to ease testing
+from paruni import * #to ease testing
 
 
 #=====================================================
@@ -53,12 +44,9 @@ grid2['ny']=int(layer2['ly']/grid2['dy'])
 grid1['nx']=2*grid2['nx']
 grid1['ny']=2*grid2['ny']
 
-grid1['nz']=int(layer1['lz']/grid1['dz']/2)*2
 grid2['nz']=int(layer2['lz']/grid2['dz'])
-
-grids=[grid1, grid2]
-print grids
-
+grid1['nz']=int(layer1['lz']/grid1['dz']/2)*2+grid2['nz']*2
+print grid1
 
 #=====================================================
 #   create buoyancy, stiffness file
@@ -76,7 +64,7 @@ for i in range(len(par_name)):
         label2="Distance(Y)" unit2="m"
         label3="Distance(Z)" unit3="m"
         mag=%f
-        '''%(grid1['nx']+1,grid1['ny']+1,grid1['nz']+1-n_extra,
+        '''%(grid1['nx']+1,grid1['ny']+1,int(layer1['lz']/grid1['dz']/2)*2+1-n_extra,
              grid1['dx'], grid1['dy'], grid1['dz'],
                  layer1[par_name[i]]))
     Flow('%s_0_1'%(par_name[i]), None, ''' spike
@@ -86,21 +74,11 @@ for i in range(len(par_name)):
         label2="Distance(Y)" unit2="m"
         label3="Distance(Z)" unit3="m"
         mag=%f
-        '''%(grid1['nx']+1,grid1['ny']+1,n_extra,
+        '''%(grid1['nx']+1,grid1['ny']+1,n_extra+grid2['nz']*2,
              grid1['dx'], grid1['dy'], grid1['dz'],
              layer2[par_name[i]]))
     Flow('%s_0'%(par_name[i]),['%s_0_0'%(par_name[i]), '%s_0_1'%(par_name[i])],'''cat ${SOURCES[1:-1]} axis=3''')
     Flow('dummy_%s'%(par_name[i]),['%s_0_0'%(par_name[i]), '%s_0_1'%(par_name[i])],'''rm ${SOURCES[0:-1]}''',stdout=0,stdin=0)
-    Flow('%s_1'%(par_name[i]), None, ''' spike
-        n1=%d n2=%d n3=%d
-        d1=%f d2=%f d3=%f
-        label1="Distance(X)" unit1="m"
-        label2="Distance(Y)" unit2="m"
-        label3="Distance(Z)" unit3="m"
-        mag=%f
-        '''%(grid2['nx']+1,grid2['ny']+1,grid2['nz']+1,
-             grid2['dx'], grid2['dy'], grid2['dz'],
-             layer2[par_name[i]]))
 
 #=====================================================
 #   Set up simulation time step: dt
@@ -120,7 +98,7 @@ ricker_tmp = (pi**2)*(fpeak**2)
 if src_option==0: #source is kept away from the grid interface
     src_z = int(layer1['lz']*0.2/grid2['dz'])*grid2['dz']
 elif src_option==1: #source is very close to the grid interface
-    src_z = (grid1['nz']-1)*grid1['dz']
+    src_z = (int(layer1['lz']/grid1['dz']/2)*2-1)*grid1['dz']
 
 ricker_pars = {
     'src_x':int(layer1['lx']*0.5/grid2['dx'])*grid2['dx'],
@@ -169,65 +147,41 @@ Flow('rec_trace.hh','rec_trace.asci','''echo in=${SOURCES[0]} n1=3 n2=4 data_for
 #=====================================================
 #   Main Program
 movie_dt = 30*dt
-movie_nt = int(duration/(30*dt))
-Flow(['out.txt', 'energy_ii_%s'%(test_name), 'res_trace', 'rec_out', 'movie_vx_1', 'movie_vx_2'],
-     ['ricker', 'rec_trace.hh', 'buoy_0', 'buoy_1', 's11_0', 's11_1', 's13_0', 's13_1'],
-        main + ''' num_threads=16
-         num_grids=2 imode=0 top_bc=1
-         buoy_1=${SOURCES[2]} s11_1=${SOURCES[4]} s13_1=${SOURCES[6]}
-         buoy_2=${SOURCES[3]} s11_2=${SOURCES[5]} s13_2=${SOURCES[7]}
+movie_nt = 1; #int(duration/(30*dt))
+Flow(['out.txt', 'energy_uni_%s'%(test_name), 'res_trace', 'rec_out', 'movie_vx_1'],
+     ['ricker', 'rec_trace.hh', 'buoy_0', 's11_0', 's13_0'],
+        main + ''' num_threads=16 num_grids=1 top_bc=1
+         buoy_1=${SOURCES[2]} s11_1=${SOURCES[3]} s13_1=${SOURCES[4]}
          dt=%f radius=1 src=${SOURCES[0]}
          check_energy=y energy_trace=${TARGETS[1]}
          movie_dt=%f movie_nt=%d
-         movie_vx_flag=y movie_vx_1=${TARGETS[4]} movie_vx_2=${TARGETS[5]}
+         movie_vx_flag=y movie_vx_1=${TARGETS[4]}
          rec_in=${SOURCES[1]} rec_out=${TARGETS[3]}
          verb=y res_trace=${TARGETS[2]}
          '''%(dt,movie_dt,movie_nt), stdin=0)
 
-Result('energy_ii_%s'%(test_name),'''sfgraph scalebar=y title="Energy: e(t)" ''')
+Result('energy_uni_%s'%(test_name),'''sfgraph scalebar=y title="Energy: e(t)" ''')
 Flow('rec_out.hh','rec_out','sfcp --out=stdout')
 
 #=====================================================
-#   create movie
+#   create movie (undersampling, otherwise cannot do "transp")
 Result('movie_vx_1',
        '''
+           window j1=2 j2=2 j3=2 | 
            transp plane=13 | transp plane=23 | byte gainpanel=all |
            grey4 frame1=%d frame2=%d frame3=%d clip=0.01
            title="vx (fine grid)"  flat=n
-           '''%(grid1['nz']/2,grid1['nx']/2,grid1['ny']/2))
-Result('movie_vx_2',
-       '''
-           transp plane=13 | transp plane=23 | byte gainpanel=all |
-           grey4 frame1=%d frame2=%d frame3=%d clip=0.01
-           title="vx (fine grid)"  flat=n
-           '''%(grid2['nz']/2,grid2['nx']/2,grid2['ny']/2))
-#   create movie on the composite grid
-Flow('tmp1', 'movie_vx_1', '''
-    window j1=2 j2=2 j3=2
-    ''')
-Flow('tmp2', 'movie_vx_2', '''
-    window f3=1
-    ''')
-Flow('movie_cg', ['tmp1', 'tmp2'], '''
-    cat ${SOURCES[1:-1]} axis=3
-    ''')
-#clean up tmp files
-Flow('dummy-cg',['tmp1', 'tmp2'],'''rm ${SOURCES[0:-1]}''',stdout=0,stdin=0)
-#
-Result('movie_cg',
-       ''' transp plane=13 | transp plane=23 | byte gainpanel=all |
-           grey4 frame1=%d frame2=%d frame3=%d clip=0.01
-           title="vx (composite grid)"  flat=n
-           '''%(grid2['nz']-4,grid2['nx']/2,grid2['ny']/2))
+           '''%(int(layer1['lz']/grid1['dz']/2)-2,grid2['nx']/2,grid2['ny']/2))
 
 #=====================================================
-#for report
+#   create report pics
 for iframe in [10,16,22,28,34,36]:
     title = "vx, time = %f ms"%((iframe-1)*movie_dt)
-    Result('movie_cg_ii_%d_%s'%(iframe,test_name),'movie_cg',
-           '''window f4=%d n4=1 | transp plane=13 | transp plane=23 | byte gainpanel=all |
+    Result('movie_uni_%d_%s'%(iframe,test_name),'movie_vx_1',
+           '''window f4=%d n4=1 j1=2 j2=2 j3=2 |
+               transp plane=13 | transp plane=23 | byte gainpanel=all |
                grey3 frame1=%d frame2=%d frame3=%d clip=0.01
                title="%s"  flat=y
-               '''%(iframe,grid1['nz']/2-2,grid2['nx']/2,grid2['ny']/2,title))
+               '''%(iframe,int(layer1['lz']/grid1['dz']/2)-2,grid2['nx']/2,grid2['ny']/2,title))
 
 End()
