@@ -24,7 +24,7 @@
 #include "array.hpp"
 #include "sim_utils.hpp"
 #include "test_utils.hpp"
-
+#include <cstdlib>
 
 int main(int argc, char* argv[])
 {
@@ -162,7 +162,11 @@ int main(int argc, char* argv[])
     clock_t begin=clock();
     clock_t total_time_ghost=0;
     //+-+-+-+-+-+-+-+-+  START SIMULATION
-    for(int niter = 0, iframe = 0; niter <= ceil(movie_dt*movie_nt/dt); niter++)
+    int niters = ceil(movie_dt*movie_nt/dt);
+    char* cniters = getenv("NITERS");
+    if (cniters)
+        niters = strtol(cniters, NULL, 0);
+    for(int niter = 0, iframe = 0; niter <= niters; niter++)
     {
         //monitor how fast an iteration is
         if(verb)
